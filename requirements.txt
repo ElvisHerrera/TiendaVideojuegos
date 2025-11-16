@@ -1,0 +1,2 @@
+PySide6>=6.6.0
+DB SQLite>=3.36.0
