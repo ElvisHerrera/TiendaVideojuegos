@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 
@@ -118,3 +119,27 @@ def delete_product(pid: int):
     cur.execute("DELETE FROM product WHERE id=?", (pid,))
     conn.commit()
     conn.close()
+
+
+def get_db_path():
+    base_dir = os.path.expanduser("~/.local/share/tienda_juegos")
+
+    # Crear carpeta si no existe
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+
+    return os.path.join(base_dir, "database.db")
+
+
+def get_connection():
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    return conn
+
+def get_media_path():
+    media_dir = os.path.expanduser("~/.local/share/tienda_juegos/media")
+
+    if not os.path.exists(media_dir):
+        os.makedirs(media_dir)
+
+    return media_dir
