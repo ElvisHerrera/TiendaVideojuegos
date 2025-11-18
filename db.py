@@ -2,16 +2,44 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent / "store.db"
+# ============================================================
+#  UBICACIÓN PERMANENTE DE LA BASE DE DATOS (LINUX + WINDOWS)
+# ============================================================
 
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+def get_app_dir():
+    if os.name == "nt":  # Windows
+        base = os.path.join(os.environ.get("APPDATA"), "tienda_juegos")
+    else:  # Linux/Mac
+        base = os.path.expanduser("~/.local/share/tienda_juegos")
+
+    if not os.path.exists(base):
+        os.makedirs(base)
+
+    return base
+
+
+def get_db_path():
+    return os.path.join(get_app_dir(), "database.db")
+
+
+# ============================================================
+#  CONEXIÓN DE BASE DE DATOS
+# ============================================================
+
+def get_connection():
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
+
+# ============================================================
+#  INICIALIZAR BASE DE DATOS
+# ============================================================
+
 def init_db():
-    conn = get_conn()
+    conn = get_connection()
     cur = conn.cursor()
+
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS product (
@@ -28,6 +56,8 @@ def init_db():
         );
         """
     )
+
+    # Trigger para actualizar updated_at
     cur.execute(
         """
         CREATE TRIGGER IF NOT EXISTS product_updated_at
@@ -37,12 +67,19 @@ def init_db():
         END;
         """
     )
+
     conn.commit()
     conn.close()
 
+
+# ============================================================
+#  CRUD
+# ============================================================
+
 def list_products(search=""):
-    conn = get_conn()
+    conn = get_connection()
     cur = conn.cursor()
+
     if search:
         like = f"%{search}%"
         cur.execute(
@@ -51,25 +88,29 @@ def list_products(search=""):
             WHERE title LIKE ? OR platform LIKE ? OR genre LIKE ?
             ORDER BY id DESC
             """,
-            (like, like, like),
+            (like, like, like)
         )
     else:
         cur.execute("SELECT * FROM product ORDER BY id DESC")
-    rows = cur.fetchall()
+
+    rows = [dict(row) for row in cur.fetchall()]
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
+
 
 def get_product(pid: int):
-    conn = get_conn()
+    conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM product WHERE id = ?", (pid,))
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else None
 
+
 def insert_product(data: dict) -> int:
-    conn = get_conn()
+    conn = get_connection()
     cur = conn.cursor()
+
     cur.execute(
         """
         INSERT INTO product (title, platform, genre, price, stock, image_path, description)
@@ -85,14 +126,17 @@ def insert_product(data: dict) -> int:
             data.get("description", "").strip(),
         ),
     )
+
     conn.commit()
     new_id = cur.lastrowid
     conn.close()
     return new_id
 
+
 def update_product(pid: int, data: dict):
-    conn = get_conn()
+    conn = get_connection()
     cur = conn.cursor()
+
     cur.execute(
         """
         UPDATE product SET
@@ -108,36 +152,27 @@ def update_product(pid: int, data: dict):
             data.get("image_path"),
             data.get("description", "").strip(),
             pid,
-        ),
+        )
     )
+
     conn.commit()
     conn.close()
+
 
 def delete_product(pid: int):
-    conn = get_conn()
+    conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM product WHERE id=?", (pid,))
+    cur.execute("DELETE FROM product WHERE id = ?", (pid,))
     conn.commit()
     conn.close()
 
 
-def get_db_path():
-    base_dir = os.path.expanduser("~/.local/share/tienda_juegos")
-
-    # Crear carpeta si no existe
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
-
-    return os.path.join(base_dir, "database.db")
-
-
-def get_connection():
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    return conn
+# ============================================================
+#  CARPETA PARA GUARDAR IMÁGENES
+# ============================================================
 
 def get_media_path():
-    media_dir = os.path.expanduser("~/.local/share/tienda_juegos/media")
+    media_dir = os.path.join(get_app_dir(), "media")
 
     if not os.path.exists(media_dir):
         os.makedirs(media_dir)
