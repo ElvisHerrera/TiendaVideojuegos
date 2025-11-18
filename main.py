@@ -35,10 +35,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 
 import db
+from pathlib import Path
+MEDIA_DIR = Path(db.get_media_path())
 
-APP_DIR = Path(__file__).resolve().parent
-MEDIA_DIR = APP_DIR / "media"
-MEDIA_DIR.mkdir(exist_ok=True)
 
 
 # =============================
