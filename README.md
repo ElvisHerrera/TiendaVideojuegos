@@ -1,193 +1,207 @@
-# Videogame Store App (PySide6 + SQLite)
+# Videogame Store App (PySide6 + PostgreSQL en red)
 
-Aplicación de escritorio hecha en **Python + PySide6** con **SQLite**.  
-Permite hacer CRUD de videojuegos con imagen de portada y cuenta con una vista previa de impresión tipo ficha de producto.
+Aplicación de escritorio hecha en **Python + PySide6** con **PostgreSQL** como base de datos centralizada.
 
-Funciona tanto en **Windows** como en **Linux**.  
-En este documento se explica cómo abrir el proyecto en VSCode, cómo ejecutarlo y cómo generar los ejecutables.
+- Permite hacer **CRUD** de videojuegos con **imagen de portada** almacenada en PostgreSQL (columna `BYTEA`).
+- Incluye función de **impresión de ficha** del videojuego actual (usando el cuadro de impresión nativo del sistema).
+- Los clientes pueden correr en **Windows 11** y en **Linux (Ubuntu 25.10)** conectándose por red a una **laptop servidor** que tiene PostgreSQL.
 
 ---
 
-## 1. Requisitos generales
+## 1. Requisitos
 
-- **Python 3.10+**
-- **Git** (opcional pero recomendado)
-- [**Visual Studio Code**](https://code.visualstudio.com/)
-- Extensión de VSCode: **Python** (de Microsoft)
-- Librerías Python:
-  - `PySide6`
-  - (las demás vienen en `requirements.txt`)
+### En la máquina cliente (donde corre la app)
+
+- Python 3.10 o superior  
+- Git (opcional)  
+- Visual Studio Code  
+- Extensión de VSCode: Python (de Microsoft)  
+- Librerías Python (se instalan desde `requirements.txt`):
+  - PySide6
+  - psycopg2-binary
+  - otras que incluya el proyecto
+
+### En la máquina servidor (base de datos)
+
+- PostgreSQL (por ejemplo PostgreSQL 18)  
+- pgAdmin (opcional, para administrar PostgreSQL)  
+- Base de datos, usuario y permisos configurados. Ejemplo:
+  - BD: `tienda_videojuegos`
+  - Usuario: `tienda_user`
+  - Contraseña: `TuPasswordSegura123`
+- El servidor debe permitir conexiones desde la red local (ajustes en `postgresql.conf` y `pg_hba.conf`).
+
+La tabla `videogame` se crea automáticamente al iniciar la app, a través de `db.py`:
+
+    CREATE TABLE IF NOT EXISTS videogame (
+        id           SERIAL PRIMARY KEY,
+        title        VARCHAR(200) NOT NULL,
+        company      VARCHAR(200) NOT NULL,
+        release_date DATE NOT NULL,
+        image_data   BYTEA NOT NULL
+    );
 
 ---
 
 ## 2. Clonar el repositorio
 
-Desde una terminal (CMD/PowerShell en Windows o terminal en Linux):
+Desde una terminal (CMD o PowerShell en Windows, o terminal en Linux):
 
-```bash
-git clone https://github.com/ElvisHerrera/TiendaVideojuegos.git
-cd TiendaVideojuegos
-```
-
-El contenido del proyecto queda dentro de esta carpeta.
+    git clone https://github.com/ElvisHerrera/TiendaVideojuegos.git
+    cd TiendaVideojuegos
 
 ---
 
-## 3. Abrir y editar el proyecto en VSCode
+## 3. Configurar la conexión a PostgreSQL (db.py)
 
-1. Abrir Visual Studio Code.
-2. Ir a **Archivo → Abrir carpeta…**.
-3. Seleccionar la carpeta del proyecto clonada: `TiendaVideojuegos`.
-4. Aceptar.
+En el archivo `db.py` se configura el servidor de base de datos. Ejemplo:
 
-VSCode detectará el proyecto y, si existe el entorno virtual `.venv`, normalmente lo sugerirá como intérprete de Python.  
-Si no:
+    DB_HOST = "192.168.56.1"      # IP de la laptop servidor
+    DB_PORT = 5432
+    DB_NAME = "tienda_videojuegos"
+    DB_USER = "tienda_user"
+    DB_PASSWORD = "TuPasswordSegura123"
 
-- Presiona `Ctrl+Shift+P` → escribe **Python: Select Interpreter** → elige el que apunte a `.venv`.
+Antes de ejecutar la app:
+
+1. Verificar que PostgreSQL está corriendo en la laptop servidor.  
+2. Ajustar `DB_HOST`, `DB_NAME`, `DB_USER` y `DB_PASSWORD` a tu entorno.  
+3. Revisar que `pg_hba.conf` permite la IP de los clientes.
+
+Las portadas se guardan directamente en la columna `image_data` (BYTEA), así que cualquier cliente que se conecte a la misma BD verá las mismas imágenes.
 
 ---
 
-## 4. Configurar entorno y ejecutar en modo desarrollo
+## 4. Abrir el proyecto en VSCode
 
-### 4.1. Windows
+1. Abrir Visual Studio Code.  
+2. Ir a Archivo → Abrir carpeta.  
+3. Seleccionar la carpeta del proyecto `TiendaVideojuegos`.  
+4. Presionar `Ctrl+Shift+P` → escribir `Python: Select Interpreter` → elegir el intérprete que apunte a `.venv` (cuando exista).
+
+---
+
+## 5. Configurar entorno y ejecutar en modo desarrollo
+
+### 5.1. Windows
 
 En la terminal de VSCode (dentro del proyecto):
 
-```bash
-# Crear entorno virtual (solo la primera vez)
-py -m venv .venv
+    py -m venv .venv               # Crear entorno virtual (solo la primera vez)
+    .\.venv\Scripts\activate       # Activar el entorno
+    pip install --upgrade pip      # Actualizar pip
+    pip install -r requirements.txt
+    python main.py                 # Ejecutar la app
 
-# Activar el entorno
-.\.venv\Scriptsctivate
+Para volver a ejecutar la app más adelante:
 
-# Actualizar pip e instalar dependencias
-pip install --upgrade pip
-pip install -r requirements.txt
+    cd TiendaVideojuegos
+    .\.venv\Scripts\activate
+    python main.py
 
-# Ejecutar la app
-python main.py
-```
-
-Cada vez que quieras volver a ejecutar el proyecto:
-
-```bash
-cd TiendaVideojuegos
-.\.venv\Scriptsctivate
-python main.py
-```
-
----
-
-### 4.2. Linux (Ubuntu/Debian o similares)
+### 5.2. Linux (Ubuntu, Debian o similares)
 
 En la terminal (dentro del proyecto):
 
-```bash
-# Crear entorno virtual (solo la primera vez)
-python3 -m venv .venv
+    python3 -m venv .venv          # Crear entorno virtual (solo la primera vez)
+    source .venv/bin/activate      # Activar el entorno
+    pip install --upgrade pip      # Actualizar pip
+    pip install -r requirements.txt
+    python3 main.py                # Ejecutar la app
 
-# Activar el entorno
-source .venv/bin/activate
+Para ejecutarla de nuevo:
 
-# Actualizar pip e instalar dependencias
-pip install --upgrade pip
-pip install -r requirements.txt
+    cd TiendaVideojuegos
+    source .venv/bin/activate
+    python3 main.py
 
-# Ejecutar la app
-python3 main.py
-```
-
-Para ejecutar otra vez más adelante:
-
-```bash
-cd TiendaVideojuegos
-source .venv/bin/activate
-python3 main.py
-```
-
-> La base de datos SQLite se crea y gestiona automáticamente a través del archivo `db.py`.
+La app siempre se conecta al servidor PostgreSQL usando la configuración de `db.py`. No se usan archivos de base de datos locales.
 
 ---
 
-## 5. Generar ejecutable para **Windows** (`.exe`)
+## 6. Generar ejecutable para Windows (exe)
 
-1. Abre VSCode en la carpeta del proyecto.
-2. Activa el entorno virtual:
+Con el entorno virtual activo en Windows:
 
-   ```bash
-   .\.venv\Scripts\activate
-   ```
+    .\.venv\Scripts\activate
+    pip install pyinstaller
+    pyinstaller --onefile --windowed --name TiendaVideojuegos main.py
 
-3. Instala **PyInstaller** (si aún no está instalado):
+El ejecutable quedará en:
 
-   ```bash
-   pip install pyinstaller
-   ```
+    dist/TiendaVideojuegos.exe
 
-4. Genera el ejecutable:
+Para usarlo en otra PC con Windows:
 
-   ```bash
-   pyinstaller --onefile --windowed --name TiendaVideojuegos main.py
-   ```
-
-- El archivo `.exe` se generará en la carpeta:
-
-  ```text
-  dist/TiendaVideojuegos.exe
-  ```
-
-5. Para distribuir la app en otra PC con Windows, copia:
-
-   - `dist/TiendaVideojuegos.exe`
-   - La carpeta `media/` (si usas imágenes cargadas desde ahí)
-   - Cualquier otro recurso necesario (por ejemplo `assets/` o el archivo de base de datos, si corresponde).
+- Copiar `dist/TiendaVideojuegos.exe`.  
+- Asegurar que esa PC puede conectarse a la IP de la laptop servidor (misma red).  
+- No hace falta copiar ninguna base de datos local, porque los datos están en PostgreSQL.
 
 ---
 
-## 6. Generar ejecutable para **Linux**
+## 7. Generar ejecutable para Linux
 
-En Linux, con el entorno virtual activado:
+Con el entorno virtual activo en Linux:
 
-```bash
-source .venv/bin/activate
-pip install pyinstaller
-pyinstaller --onefile --windowed --name tienda_juegos main.py
-```
+    source .venv/bin/activate
+    pip install pyinstaller
+    pyinstaller --onefile --windowed --name tienda_juegos main.py
 
-- El ejecutable se generará en:
+El ejecutable quedará en:
 
-  ```text
-  dist/tienda_juegos
-  ```
+    dist/tienda_juegos
 
 Para ejecutarlo:
 
-```bash
-cd dist
-./tienda_juegos
-```
+    cd dist
+    chmod +x tienda_juegos   # si es necesario
+    ./tienda_juegos
 
-> Si da problemas de permisos, usar:  
-> `chmod +x tienda_juegos` y luego volver a ejecutar.
+El ejecutable se conecta al mismo servidor PostgreSQL configurado en `db.py`.
 
 ---
 
-## 7. Estructura del proyecto
+## 8. Estructura del proyecto
 
-```text
-TiendaVideojuegos/
-├── assets/             # Recursos opcionales (iconos, etc.)
-├── media/              # Imágenes copiadas de los videojuegos
-├── db.py               # Lógica de conexión y operaciones con SQLite
-├── main.py             # Interfaz gráfica (PySide6)
-├── README.md           # Este archivo
-└── requirements.txt    # Dependencias del proyecto
-```
+    TiendaVideojuegos/
+    ├── assets/             # Recursos opcionales (iconos, etc.)
+    ├── db.py               # Conexión y CRUD con PostgreSQL (incluye image_data BYTEA)
+    ├── imprimir.py         # Lógica de impresión de la ficha del videojuego
+    ├── main.py             # Interfaz gráfica (PySide6)
+    ├── README.md           # Este archivo
+    └── requirements.txt    # Dependencias del proyecto
+
+Las imágenes de los videojuegos no se guardan en carpetas locales, sino en PostgreSQL (columna `image_data`). Esto permite que varias máquinas (Windows y Linux) vean la misma información y portadas.
 
 ---
 
-## 8. Notas finales
+## 9. Flujo de uso
 
-- En modo desarrollo se recomienda **no borrar** la carpeta `media/`, ya que ahí se almacenan las imágenes seleccionadas desde la app.
-- Si cambias versiones de Python o librerías, es buena idea eliminar `.venv` y volver a crear el entorno desde cero.
-- La vista previa de impresión abre un formulario con la ficha del videojuego; el botón **Imprimir** usa el cuadro de impresión del sistema (Windows o Linux) para enviar ese formulario a la impresora.
+1. En la laptop servidor:
+   - Levantar el servicio PostgreSQL.  
+   - Asegurar que existen:
+     - BD `tienda_videojuegos`.
+     - Usuario `tienda_user` con permisos sobre la BD, la tabla `videogame` y la secuencia `videogame_id_seq`.
+
+2. En las laptops cliente (Windows o Ubuntu):
+   - Activar `.venv` y ejecutar `python main.py` o usar el ejecutable generado.  
+   - Agregar videojuegos con:
+     - Nombre.
+     - Compañía.
+     - Fecha de lanzamiento.
+     - Imagen de portada (se guarda como BYTEA).
+
+3. Para imprimir la ficha:
+   - Seleccionar un videojuego en la lista.  
+   - Pulsar el botón "Imprimir ficha".  
+   - El módulo `imprimir.py` abre el cuadro de impresión nativo (Windows o Linux) y envía título, datos y portada a la impresora seleccionada.
+
+---
+
+## 10. Notas finales
+
+- Mensajes en consola como `libpng error: Read Error` suelen ser avisos internos de los plugins de imagen de Qt cuando prueban distintos formatos (por ejemplo, intentan leer un JPG como PNG). Mientras la imagen se vea bien en la app, no es un fallo crítico.
+- Si cambias la IP del servidor o la configuración de PostgreSQL, recuerda actualizar `DB_HOST`, `DB_NAME`, `DB_USER` y `DB_PASSWORD` en `db.py`.
+- Si aparecen errores de permisos en PostgreSQL (permission denied, problemas con secuencias, etc.), revisa:
+  - Permisos del rol `tienda_user` sobre la BD, el esquema `public`, la tabla `videogame` y la secuencia `videogame_id_seq`.
+  - Configuración de `pg_hba.conf` y el reinicio del servicio PostgreSQL.
