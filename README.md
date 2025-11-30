@@ -28,7 +28,7 @@ Aplicación de escritorio hecha en **Python + PySide6** con **PostgreSQL** como 
 - Base de datos, usuario y permisos configurados. Ejemplo:
   - BD: `tienda_videojuegos`
   - Usuario: `tienda_user`
-  - Contraseña: `TuPasswordSegura123`
+  - Contraseña: `P123`
 - El servidor debe permitir conexiones desde la red local (ajustes en `postgresql.conf` y `pg_hba.conf`).
 
 La tabla `videogame` se crea automáticamente al iniciar la app, a través de `db.py`:
