@@ -1,82 +1,101 @@
-import os
-import sqlite3
-from pathlib import Path
+# db.py - Acceso a PostgreSQL para colección de videojuegos
+import datetime
+from typing import List, Dict, Optional
 
-# ============================================================
-#  UBICACIÓN PERMANENTE DE LA BASE DE DATOS (LINUX + WINDOWS)
-# ============================================================
+import psycopg2
+from psycopg2 import Binary
+from psycopg2.extras import RealDictCursor
 
-def get_app_dir():
-    if os.name == "nt":  # Windows
-        base = os.path.join(os.environ.get("APPDATA"), "tienda_juegos")
-    else:  # Linux/Mac
-        base = os.path.expanduser("~/.local/share/tienda_juegos")
+# ======================
+# CONFIGURACIÓN SERVIDOR
+# ======================
 
-    if not os.path.exists(base):
-        os.makedirs(base)
+DB_HOST = "192.168.56.1"      # <-- TU IP DEL SERVIDOR
+DB_PORT = 5432
+DB_NAME = "tienda_videojuegos"
+DB_USER = "tienda_user"
+DB_PASSWORD = "P123"   # <-- TU PASSWORD
 
-    return base
-
-
-def get_db_path():
-    return os.path.join(get_app_dir(), "database.db")
-
-
-# ============================================================
-#  CONEXIÓN DE BASE DE DATOS
-# ============================================================
 
 def get_connection():
-    conn = sqlite3.connect(get_db_path())
-    conn.row_factory = sqlite3.Row
+    """
+    Crea una conexión nueva a PostgreSQL usando RealDictCursor
+    para devolver diccionarios en lugar de tuplas.
+    """
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        cursor_factory=RealDictCursor,
+    )
     return conn
 
 
-# ============================================================
-#  INICIALIZAR BASE DE DATOS
-# ============================================================
+def _normalize_date(value) -> str:
+    """
+    Convierte la fecha que viene de PostgreSQL a 'YYYY-MM-DD' (string),
+    para mostrarla fácil en la interfaz.
+    """
+    if isinstance(value, datetime.date):
+        return value.strftime("%Y-%m-%d")
+    return str(value) if value is not None else ""
+
+
+def _row_to_dict(row) -> Optional[Dict]:
+    """
+    Convierte una fila de RealDictCursor a dict normal,
+    normalizando fecha e imagen (memoryview -> bytes).
+    """
+    if not row:
+        return None
+
+    d = dict(row)
+
+    # Fecha
+    d["release_date"] = _normalize_date(d.get("release_date"))
+
+    # Imagen: PostgreSQL suele devolver BYTEA como memoryview
+    img = d.get("image_data")
+    if isinstance(img, memoryview):
+        d["image_data"] = img.tobytes()
+
+    return d
+
 
 def init_db():
+    """
+    Crea la tabla videogame si no existe.
+    Se llama una sola vez al iniciar la app.
+    """
     conn = get_connection()
     cur = conn.cursor()
-
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS product (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            platform TEXT NOT NULL,
-            genre TEXT,
-            price REAL NOT NULL CHECK(price >= 0),
-            stock INTEGER NOT NULL DEFAULT 0,
-            image_path TEXT,
-            description TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS videogame (
+            id           SERIAL PRIMARY KEY,
+            title        VARCHAR(200) NOT NULL,
+            company      VARCHAR(200) NOT NULL,
+            release_date DATE NOT NULL,
+            image_data   BYTEA NOT NULL
         );
         """
     )
-
-    # Trigger para actualizar updated_at
-    cur.execute(
-        """
-        CREATE TRIGGER IF NOT EXISTS product_updated_at
-        AFTER UPDATE ON product
-        BEGIN
-            UPDATE product SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-        END;
-        """
-    )
-
     conn.commit()
     conn.close()
 
 
-# ============================================================
-#  CRUD
-# ============================================================
+# ======================
+# FUNCIONES CRUD
+# ======================
 
-def list_products(search=""):
+def list_products(search: str = "") -> List[Dict]:
+    """
+    Lista videojuegos. Si 'search' viene con texto, filtra por título o compañía.
+    Devuelve una lista de diccionarios, cada uno con todos los campos,
+    incluida la imagen en image_data (bytes).
+    """
     conn = get_connection()
     cur = conn.cursor()
 
@@ -84,97 +103,138 @@ def list_products(search=""):
         like = f"%{search}%"
         cur.execute(
             """
-            SELECT * FROM product
-            WHERE title LIKE ? OR platform LIKE ? OR genre LIKE ?
+            SELECT id, title, company, release_date, image_data
+            FROM videogame
+            WHERE title ILIKE %s OR company ILIKE %s
             ORDER BY id DESC
             """,
-            (like, like, like)
+            (like, like),
         )
     else:
-        cur.execute("SELECT * FROM product ORDER BY id DESC")
+        cur.execute(
+            """
+            SELECT id, title, company, release_date, image_data
+            FROM videogame
+            ORDER BY id DESC
+            """
+        )
 
-    rows = [dict(row) for row in cur.fetchall()]
+    rows = cur.fetchall()
     conn.close()
-    return rows
+
+    result: List[Dict] = []
+    for r in rows:
+        d = _row_to_dict(r)
+        if d is not None:
+            result.append(d)
+    return result
 
 
-def get_product(pid: int):
+def get_product(pid: int) -> Optional[Dict]:
+    """
+    Obtiene un solo videojuego por id.
+    """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM product WHERE id = ?", (pid,))
+    cur.execute(
+        """
+        SELECT id, title, company, release_date, image_data
+        FROM videogame
+        WHERE id = %s
+        """,
+        (pid,),
+    )
     row = cur.fetchone()
     conn.close()
-    return dict(row) if row else None
+
+    return _row_to_dict(row)
 
 
-def insert_product(data: dict) -> int:
+def insert_product(data: Dict) -> int:
+    """
+    Inserta un videojuego. 'data' debe traer:
+    - title (str)
+    - company (str)
+    - release_date (datetime.date)
+    - image_data (bytes)
+    Devuelve el id generado.
+    """
     conn = get_connection()
     cur = conn.cursor()
 
+    image_bytes = data.get("image_data")
+    if isinstance(image_bytes, memoryview):
+        image_bytes = image_bytes.tobytes()
+
     cur.execute(
         """
-        INSERT INTO product (title, platform, genre, price, stock, image_path, description)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO videogame (title, company, release_date, image_data)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id;
         """,
         (
-            data.get("title", "").strip(),
-            data.get("platform", "").strip(),
-            data.get("genre", "").strip(),
-            float(data.get("price", 0)),
-            int(data.get("stock", 0)),
-            data.get("image_path"),
-            data.get("description", "").strip(),
+            data["title"],
+            data["company"],
+            data["release_date"],
+            Binary(image_bytes),
         ),
     )
-
+    new_id_row = cur.fetchone()
     conn.commit()
-    new_id = cur.lastrowid
     conn.close()
-    return new_id
+
+    return int(new_id_row["id"])
 
 
-def update_product(pid: int, data: dict):
+def update_product(pid: int, data: Dict) -> None:
+    """
+    Actualiza un videojuego por id.
+    Si 'image_data' viene None, conserva la imagen anterior.
+    """
     conn = get_connection()
     cur = conn.cursor()
+
+    # Si no hay nueva imagen, tomamos la actual
+    image_data = data.get("image_data")
+    if image_data is None:
+        cur.execute("SELECT image_data FROM videogame WHERE id = %s", (pid,))
+        row = cur.fetchone()
+        if row:
+            img = row["image_data"]
+            if isinstance(img, memoryview):
+                img = img.tobytes()
+            image_data = img
+    else:
+        if isinstance(image_data, memoryview):
+            image_data = image_data.tobytes()
 
     cur.execute(
         """
-        UPDATE product SET
-            title=?, platform=?, genre=?, price=?, stock=?, image_path=?, description=?
-        WHERE id=?
+        UPDATE videogame
+        SET title = %s,
+            company = %s,
+            release_date = %s,
+            image_data = %s
+        WHERE id = %s;
         """,
         (
-            data.get("title", "").strip(),
-            data.get("platform", "").strip(),
-            data.get("genre", "").strip(),
-            float(data.get("price", 0)),
-            int(data.get("stock", 0)),
-            data.get("image_path"),
-            data.get("description", "").strip(),
+            data["title"],
+            data["company"],
+            data["release_date"],
+            Binary(image_data),
             pid,
-        )
+        ),
     )
-
     conn.commit()
     conn.close()
 
 
-def delete_product(pid: int):
+def delete_product(pid: int) -> None:
+    """
+    Elimina un videojuego por id.
+    """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM product WHERE id = ?", (pid,))
+    cur.execute("DELETE FROM videogame WHERE id = %s", (pid,))
     conn.commit()
     conn.close()
-
-
-# ============================================================
-#  CARPETA PARA GUARDAR IMÁGENES
-# ============================================================
-
-def get_media_path():
-    media_dir = os.path.join(get_app_dir(), "media")
-
-    if not os.path.exists(media_dir):
-        os.makedirs(media_dir)
-
-    return media_dir
