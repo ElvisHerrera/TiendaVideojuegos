@@ -1,7 +1,1 @@
 PySide6>=6.6.0
-pytest>=7.0.0
-Flask>=2.0.0
-reportlab>=4.0
-requests>=2.0.0
-# pywin32 is required only on Windows if you want win32 printing support
-pywin32; platform_system == "Windows"

@@ -27,10 +27,6 @@ from PySide6.QtWidgets import (
 
 import db
 import imprimir  # <-- NUEVO: módulo externo para la impresión
-import os
-import tempfile
-import shutil
-import subprocess
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -626,99 +622,8 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Si se definió PRINT_SERVER_URL en el entorno, intentamos enviar al servidor
-        server = os.getenv("PRINT_SERVER_URL")
-
-        # Create a temporary PDF file for preview / download
-        fd, tmp_pdf = tempfile.mkstemp(suffix=".pdf")
-        os.close(fd)
-
-        # Try render with server-side renderer (reportlab). If that fails,
-        # we'll still allow local printing.
-        rendered = False
         try:
-            imprimir.render_ficha_to_pdf(game, tmp_pdf)
-            rendered = True
-        except Exception as e:
-            # Could not render PDF (e.g., reportlab missing). We'll still let
-            # the user print locally via the Qt preview/print flow below.
-            rendered = False
-
-        # Build a custom message box with options
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Imprimir ficha")
-        msg.setText(f"Ficha: {game.get('title', 'Sin título')}")
-        msg.setInformativeText("Elige una acción: vista previa, descargar PDF o imprimir.")
-
-        btn_preview = msg.addButton("Vista previa", QMessageBox.ActionRole)
-        btn_download = msg.addButton("Descargar PDF", QMessageBox.ActionRole)
-        btn_print_local = msg.addButton("Imprimir local", QMessageBox.ActionRole)
-        btn_cancel = msg.addButton(QMessageBox.Cancel)
-        btn_print_server = None
-        if server:
-            btn_print_server = msg.addButton("Enviar al servidor", QMessageBox.ActionRole)
-
-        msg.exec()
-
-        chosen = msg.clickedButton()
-
-        # Preview: if PDF was rendered, open system PDF viewer. Otherwise, open
-        # the local Qt preview dialog (imprimir_ficha) which draws via QPrinter.
-        try:
-            if chosen == btn_preview:
-                if rendered:
-                    # open with platform default viewer
-                    if sys.platform.startswith("win"):
-                        os.startfile(tmp_pdf)  # type: ignore
-                    elif sys.platform.startswith("darwin"):
-                        subprocess.Popen(["open", tmp_pdf])
-                    else:
-                        subprocess.Popen(["xdg-open", tmp_pdf])
-                else:
-                    # fallback to local gui preview/print
-                    imprimir.imprimir_ficha(game, parent=self)
-
-            elif chosen == btn_download:
-                if not rendered:
-                    # attempt render now
-                    try:
-                        imprimir.render_ficha_to_pdf(game, tmp_pdf)
-                        rendered = True
-                    except Exception as e:
-                        QMessageBox.critical(self, "Error", f"No se pudo generar PDF: {e}")
-                if rendered:
-                    dest, _ = QFileDialog.getSaveFileName(self, "Guardar PDF", f"{game.get('title','ficha')}.pdf", "PDF Files (*.pdf)")
-                    if dest:
-                        try:
-                            shutil.copy(tmp_pdf, dest)
-                            QMessageBox.information(self, "Descarga", f"PDF guardado en: {dest}")
-                        except Exception as e:
-                            QMessageBox.critical(self, "Error", f"No se pudo guardar PDF: {e}")
-
-            elif btn_print_server and chosen == btn_print_server:
-                try:
-                    ok = imprimir.imprimir_via_servidor(server, game)
-                    if ok:
-                        QMessageBox.information(self, "Impresión", "Trabajo enviado al servidor de impresión.")
-                    else:
-                        QMessageBox.critical(self, "Error", "El servidor respondió con error.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"No se pudo enviar al servidor: {e}")
-
-            elif chosen == btn_print_local:
-                # Local printing allows the user to select a printer and print.
-                # We keep the existing GUI printing flow which uses a preview dialog
-                # and the native Qt print dialog.
-                try:
-                    imprimir.imprimir_ficha(game, parent=self)
-                except Exception as e:
-                    QMessageBox.critical(self, "Error de impresión", f"No se pudo imprimir:\n{e}")
-
-        finally:
-            try:
-                os.remove(tmp_pdf)
-            except Exception:
-                pass
+            imprimir.imprimir_ficha(game, parent=self)
         except Exception as e:
             QMessageBox.critical(self, "Error de impresión", f"No se pudo imprimir:\n{e}")
 
