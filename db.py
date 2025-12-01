@@ -1,20 +1,21 @@
 # db.py - Acceso a PostgreSQL para colección de videojuegos
 import datetime
+import os
 from typing import List, Dict, Optional
 
-import psycopg2
-from psycopg2 import Binary
-from psycopg2.extras import RealDictCursor
+# Import psycopg2 lazily in functions that need it so lightweight unit tests
+# that exercise pure helpers (_normalize_date, _row_to_dict) don't require
+# psycopg2 to be installed.
 
 # ======================
 # CONFIGURACIÓN SERVIDOR
 # ======================
 
-DB_HOST = "192.168.56.1"      # <-- TU IP DEL SERVIDOR
-DB_PORT = 5432
-DB_NAME = "tienda_videojuegos"
-DB_USER = "tienda_user"
-DB_PASSWORD = "P123"   # <-- TU PASSWORD
+DB_HOST = os.getenv("DB_HOST", "localhost")      # usando servidor local para pruebas
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_NAME = os.getenv("DB_NAME", "tienda_videojuegos")
+DB_USER = os.getenv("DB_USER", "tienda_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "P123")   # <-- TU PASSWORD (puedes sobreescribir con env)
 
 
 def get_connection():
@@ -22,6 +23,10 @@ def get_connection():
     Crea una conexión nueva a PostgreSQL usando RealDictCursor
     para devolver diccionarios en lugar de tuplas.
     """
+    # Import here to avoid forcing psycopg2 as a dependency for simple unit tests
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+
     conn = psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -71,6 +76,9 @@ def init_db():
     """
     conn = get_connection()
     cur = conn.cursor()
+    # Use Binary for BYTEA fields
+    from psycopg2 import Binary
+
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS videogame (
@@ -166,6 +174,9 @@ def insert_product(data: Dict) -> int:
     if isinstance(image_bytes, memoryview):
         image_bytes = image_bytes.tobytes()
 
+    # Ensure Binary is available for BYTEA params
+    from psycopg2 import Binary
+
     cur.execute(
         """
         INSERT INTO videogame (title, company, release_date, image_data)
@@ -207,6 +218,8 @@ def update_product(pid: int, data: Dict) -> None:
     else:
         if isinstance(image_data, memoryview):
             image_data = image_data.tobytes()
+
+    from psycopg2 import Binary
 
     cur.execute(
         """

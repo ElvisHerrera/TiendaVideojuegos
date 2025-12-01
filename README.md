@@ -1,3 +1,72 @@
+---
+
+## 13. Preparar la BD rápidamente y probar la impresión
+
+Si ya tienes PostgreSQL en la máquina servidor, estos son los pasos mínimos para dejar todo listo y probar impresión desde clientes Windows/Ubuntu.
+
+1) Crear rol + base de datos (ejecutar como superusuario `postgres` en psql o desde pgAdmin):
+
+```sql
+-- Crear rol
+CREATE ROLE tienda_user WITH LOGIN PASSWORD 'TuPasswordSegura123' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+
+-- Crear BD (o ajustar owner si ya existe)
+CREATE DATABASE tienda_videojuegos WITH OWNER = tienda_user ENCODING = 'UTF8' TEMPLATE = template0;
+
+-- Permisos base
+GRANT ALL PRIVILEGES ON DATABASE tienda_videojuegos TO tienda_user;
+```
+
+2) Permitir conexiones desde la red (editar `pg_hba.conf` en el servidor y añadir una línea similar):
+
+```
+host    tienda_videojuegos    tienda_user    192.168.56.0/24    md5
+```
+
+Reinicia PostgreSQL después de editar `pg_hba.conf`.
+
+3) Asegúrate de que el servidor escucha conexiones en la IP/puerto correctos (postgresql.conf -> listen_addresses)
+
+4) Preparar la BD y agregar un registro de prueba desde cualquier máquina que tenga acceso (cliente o servidor):
+
+```bash
+# exporta la IP de tu servidor PostgreSQL (reemplaza 192.168.X.Y por la IP real)
+export DB_HOST=192.168.X.Y
+export DB_PORT=5432
+export DB_NAME=tienda_videojuegos
+export DB_USER=tienda_user
+export DB_PASSWORD=TuPasswordSegura123
+
+# crear tabla (si no existe) e insertar un registro de ejemplo
+python3 tests/bootstrap_db_sample.py
+```
+
+Si el script informa que insertó un `id`, ya tienes un registro listo para probar la vista previa/impresión desde la app cliente.
+
+5) Arrancar el servicio de impresión en la máquina que tenga la impresora:
+
+```bash
+export DB_HOST=192.168.X.Y   # IP del servidor BD si print_server necesita leer la BD
+python3 print_server.py
+```
+
+6) En el cliente (Windows o Ubuntu) configura la IP del servidor DB y la URL del servidor de impresión y ejecuta la app:
+
+```bash
+export DB_HOST=192.168.X.Y
+export PRINT_SERVER_URL="http://SERVER_IP:5000"
+python3 main.py
+```
+
+7) Probar preview por HTTP (útil para debug):
+
+```bash
+curl -X GET http://SERVER_IP:5000/preview/id/<id> --output preview.pdf
+# Abre preview.pdf en tu sistema para ver el resultado
+```
+
+Si algún paso falla, pega el error aquí y lo reviso — puedo ayudarte a ajustar `pg_hba.conf`, permisos o a solucionar problemas de conexión.
+
 # Videogame Store App (PySide6 + PostgreSQL en red)
 
 Aplicación de escritorio hecha en **Python + PySide6** con **PostgreSQL** como base de datos centralizada.
@@ -205,3 +274,140 @@ Las imágenes de los videojuegos no se guardan en carpetas locales, sino en Post
 - Si aparecen errores de permisos en PostgreSQL (permission denied, problemas con secuencias, etc.), revisa:
   - Permisos del rol `tienda_user` sobre la BD, el esquema `public`, la tabla `videogame` y la secuencia `videogame_id_seq`.
   - Configuración de `pg_hba.conf` y el reinicio del servicio PostgreSQL.
+
+---
+
+## 11. Pruebas (tests)
+
+Hay un pequeño conjunto de pruebas unitarias para funciones puras del módulo `db.py` que no requieren una base de datos real.
+
+Para ejecutarlas localmente:
+
+1. Crear y activar el entorno virtual (si no existe):
+
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+2. Instalar dependencias (incluye pytest):
+
+    ```bash
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    ```
+
+3. Ejecutar las pruebas con pytest:
+
+    ```bash
+    pytest -q
+    ```
+
+Si quieres añadir pruebas de integración que usen PostgreSQL, lo ideal es crear una base de datos de pruebas y exportar las variables de conexión antes de ejecutar esas pruebas, por ejemplo:
+
+```bash
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=tienda_test
+export DB_USER=tienda_user
+export DB_PASSWORD=MiPassDePrueba
+pytest -q
+```
+
+De esta forma `db.py` usará variables de entorno si están presentes y no sobrescribirá los valores por defecto.
+
+---
+
+## 12. Impresión centralizada (servidor de impresión)
+
+Si quieres que una PC actúe como *servidor de impresión* (con la impresora física conectada) y acepte solicitudes de impresión desde clientes en Windows o Linux, puedes usar el servicio HTTP incluido en este repo.
+
+1) Preparar el servidor (PC con la impresora conectada)
+
+ - Asegúrate de que la impresora está correctamente instalada y funcionando en esa máquina. En Linux normalmente se usa CUPS (lp/lpr) y en Windows la impresora debe estar registrada en el sistema.
+ - Asegúrate de que la impresora está correctamente instalada y funcionando en esa máquina. En Linux normalmente se usa CUPS (lp/lpr) y en Windows la impresora debe estar registrada en el sistema.
+
+### Scripts de ayuda
+
+Para simplificar la puesta en marcha incluimos scripts en `scripts/`:
+
+- `scripts/setup-server.sh` — crea `.venv`, instala dependencias y arranca `print_server.py` en background (guarda logs en `logs/print_server.log`).
+- `scripts/setup-client-linux.sh` — prepara el entorno cliente en Linux.
+- `scripts/setup-client-windows.ps1` — prepara el entorno cliente en Windows (PowerShell).
+- `scripts/print_server.service.example` — ejemplo de service systemd para correr `print_server.py` como servicio.
+
+Ejecuta los scripts desde la raíz del repo (por ejemplo `bash scripts/setup-server.sh`).
+ - Crear y activar un entorno virtual y instalar dependencias:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+2) Ejecutar el servicio de impresión (por ejemplo en la máquina servidor):
+
+```bash
+# Ejecuta el servicio Flask que escuchará peticiones HTTP (por defecto en 0.0.0.0:5000)
+python3 print_server.py
+```
+
+3) Desde un cliente (Windows o Ubuntu)
+
+ - Puedes usar el endpoint `/print/id/<id>` para que el servidor recupere el registro por `id` desde la base de datos y lo envíe a la impresora.
+ - O usar `/print/raw` enviando JSON con `title`, `company`, `release_date` y `image_data` (base64) para imprimir datos arbitrarios.
+
+Ejemplo usando curl (envía un job con JSON):
+
+```bash
+curl -X POST http://PRINT-SERVER-IP:5000/print/raw \
+    -H "Content-Type: application/json" \
+    -d '{"title":"Mi Juego","company":"ACME","release_date":"2020-01-01","image_data":null}'
+```
+
+O para imprimir un registro que ya está en la BD por id:
+
+```bash
+curl -X POST http://PRINT-SERVER-IP:5000/print/id/17
+```
+
+### Vista previa / descarga desde la app cliente
+
+La aplicación ahora permite generar una vista previa (PDF) antes de imprimir. Cuando pulses "Imprimir ficha" se dará la opción de:
+
+- Ver vista previa (se abrirá un visor PDF desde la máquina cliente).
+- Descargar la ficha en PDF (guardar archivo localmente).
+- Imprimir localmente (se abre el diálogo nativo de impresión donde eliges la impresora).
+- Enviar al servidor de impresión (si `PRINT_SERVER_URL` está configurado) para imprimir desde la PC que tenga la impresora conectada.
+
+### Conectar la aplicación a tu servidor PostgreSQL (usar tu IP)
+
+Si tu servidor PostgreSQL está en otra máquina en tu red, solo tienes que decirle a la app la IP del servidor. Hay dos opciones:
+
+1) Exportando variables de entorno en la máquina cliente antes de arrancar la app:
+
+```bash
+export DB_HOST=192.168.0.42   # cambia por la IP de tu servidor
+export DB_PORT=5432
+export DB_NAME=tienda_videojuegos
+export DB_USER=tienda_user
+export DB_PASSWORD=TuPassword
+python3 main.py
+```
+
+2) Editando `db.py` (no recomendado para producción): cambia `DB_HOST` con la IP de tu servidor.
+
+Si tienes instrucciones adicionales en `/home/harold/Downloads/instrucciones_postgre.txt`, pégamelas aquí y te explico los pasos exactos para tu entorno.
+
+4) Integrar desde la app cliente (opcional)
+
+ - Si quieres que las instancias cliente de la app (Windows/Ubuntu) envíen trabajos al servidor, la función `imprimir.imprimir_via_servidor(server_url, game)` está incluida en `imprimir.py`.
+
+ - En `main.py` la llamada a impresión se mantendrá local por defecto (abre diálogo), pero si estableces la variable de entorno `PRINT_SERVER_URL` (p. ej. `http://mi-servidor:5000`) la app intentará enviar el trabajo al servidor en vez de abrir el diálogo local.
+
+5) Seguridad y red
+
+ - Asegúrate de permitir tráfico entre máquinas sobre el puerto del servidor (por defecto 5000). Para entornos de producción protege el servicio (autenticación, HTTPS, firewall).
+
+---
